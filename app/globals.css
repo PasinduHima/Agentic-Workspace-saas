@@ -96,8 +96,16 @@
     @apply relative bg-background text-foreground;
   }
 
+  /* App-wide scale. Tailwind sizes text, spacing and components in rem, so this one value enlarges
+     the whole UI in proportion: 17px on phones and tablets, 18px from 1024px up (browser default
+     is 16px). Percentages keep the user's own browser font-size setting in effect. */
   html {
     @apply font-sans;
+    font-size: 106.25%;
+
+    @media (width >= 64rem) {
+      font-size: 112.5%;
+    }
   }
 
   h1,

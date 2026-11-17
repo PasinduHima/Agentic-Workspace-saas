@@ -47,7 +47,7 @@ export function WorkspaceCard({
         <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{workspace.description}</p>
       )}
 
-      <div className="mt-auto flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+      <div className="mt-auto flex items-center justify-between gap-2 text-[0.6875rem] text-muted-foreground">
         {/* Relative time can differ by a minute between the server and browser render. */}
         <span className="flex min-w-0 items-center gap-1.5" suppressHydrationWarning>
           <LayoutGrid className="size-3.5 shrink-0 text-primary" />
@@ -71,7 +71,7 @@ function CreatorAvatar({ creator }: { creator: WorkspaceCardData["creator"] }) {
   ) : (
     <span
       title={name}
-      className="flex size-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-medium text-foreground"
+      className="flex size-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[0.625rem] font-medium text-foreground"
     >
       {name.charAt(0).toUpperCase()}
     </span>

@@ -12,6 +12,11 @@ export function statusTitle(status: WorkspaceStatus) {
   return WORKSPACE_STATUS_LABELS[status];
 }
 
+// The board's columns, left to right.
+export const WORKSPACE_STATUSES = (
+  Object.keys(WORKSPACE_STATUS_LABELS) as WorkspaceStatus[]
+).map((status) => ({ status, title: WORKSPACE_STATUS_LABELS[status] }));
+
 // What a workspace card needs, on the dashboard and on the board.
 export const workspaceCardSelect = {
   id: true,

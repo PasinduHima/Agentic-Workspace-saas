@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, type FormEvent, type ReactNode } from "react";
+import { toast } from "sonner";
+import { updateWorkspace } from "@/actions/workspace";
+import { useFetch } from "@/hooks/use-fetch";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,32 +19,63 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateWorkspace } from "@/lib/use-create-workspace";
 
-// "New workspace" form in a dialog. `trigger` is the element that opens it.
-export function WorkspaceDialog({ trigger }: { trigger: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const { create, isPending } = useCreateWorkspace();
+type WorkspaceDialogProps =
+  // Create: opens from its own trigger.
+  | { trigger: ReactNode; workspace?: never; open?: never; onOpenChange?: never }
+  // Edit: opened by the parent (e.g. a card's menu), prefilled from `workspace`.
+  | {
+      workspace: { id: string; name: string; description: string | null };
+      open: boolean;
+      onOpenChange: (open: boolean) => void;
+      trigger?: never;
+    };
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+// New-workspace and edit-workspace form in one dialog; passing `workspace` switches it to edit.
+export function WorkspaceDialog(props: WorkspaceDialogProps) {
+  const { workspace } = props;
+  const isEdit = !!workspace;
+
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = isEdit ? props.open : ownOpen;
+  const setOpen = isEdit ? props.onOpenChange : setOwnOpen;
+
+  const { create, isPending: isCreating } = useCreateWorkspace();
+  const { fn: updateWorkspaceFn, loading: isUpdating } = useFetch(updateWorkspace);
+  const busy = isCreating || !!isUpdating;
+
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    create(
-      {
-        name: String(form.get("name") ?? ""),
-        description: String(form.get("description") ?? ""),
-      },
-      () => setOpen(false),
-    );
+    const name = String(form.get("name") ?? "");
+    const description = String(form.get("description") ?? "");
+
+    if (!isEdit) {
+      create({ name, description }, () => setOpen(false));
+      return;
+    }
+
+    if (!name.trim()) {
+      toast.error("Give the workspace a name.");
+      return;
+    }
+    if (await updateWorkspaceFn(workspace.id, name, description)) {
+      toast.success("Workspace updated");
+      setOpen(false);
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {!isEdit && <DialogTrigger asChild>{props.trigger}</DialogTrigger>}
       <DialogContent>
-        <form onSubmit={onSubmit} className="grid gap-4">
+        {/* Keyed by workspace so the uncontrolled fields re-fill when a different one is edited. */}
+        <form key={workspace?.id ?? "new"} onSubmit={onSubmit} className="grid gap-4">
           <DialogHeader>
-            <DialogTitle>New workspace</DialogTitle>
+            <DialogTitle>{isEdit ? "Edit workspace" : "New workspace"}</DialogTitle>
             <DialogDescription>
-              A workspace pairs one doc with one canvas.
+              {isEdit
+                ? "Rename it or change what it's for."
+                : "A workspace pairs one doc with one canvas."}
             </DialogDescription>
           </DialogHeader>
 
@@ -50,6 +84,7 @@ export function WorkspaceDialog({ trigger }: { trigger: ReactNode }) {
             <Input
               id="workspace-name"
               name="name"
+              defaultValue={workspace?.name}
               placeholder="Checkout flow"
               maxLength={80}
               required
@@ -61,6 +96,7 @@ export function WorkspaceDialog({ trigger }: { trigger: ReactNode }) {
             <Textarea
               id="workspace-description"
               name="description"
+              defaultValue={workspace?.description ?? ""}
               placeholder="What is this workspace for?"
               maxLength={2000}
               rows={3}
@@ -68,15 +104,17 @@ export function WorkspaceDialog({ trigger }: { trigger: ReactNode }) {
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Creating…" : "Create workspace"}
+            <Button type="submit" disabled={busy}>
+              {isEdit
+                ? isUpdating
+                  ? "Saving…"
+                  : "Save changes"
+                : isCreating
+                  ? "Creating…"
+                  : "Create workspace"}
             </Button>
           </DialogFooter>
         </form>
