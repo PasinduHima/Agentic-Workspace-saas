@@ -17,6 +17,10 @@ const column = z.object({
   name: z.string(),
   type: z.string().describe("e.g. uuid, text, integer, timestamp, boolean"),
   primaryKey: z.boolean().optional(),
+  foreignKey: z
+    .boolean()
+    .optional()
+    .describe("Mark foreign keys; drawTables also marks every relation's fromColumn"),
 });
 
 export const drawDiagramInput = z.object({

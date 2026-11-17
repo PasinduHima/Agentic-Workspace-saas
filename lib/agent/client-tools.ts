@@ -18,7 +18,8 @@ import {
   HEADER_HEIGHT,
   ROW_HEIGHT,
   entityTableHeight,
-  newColumnId,
+  newRowId,
+  type EntityRow,
   type EntityTableShape,
 } from "@/components/EntityTable/EntityTableShapeUtil";
 import type {
@@ -174,11 +175,22 @@ export async function drawDiagram(editor: Editor, input: DrawDiagramInput) {
 }
 
 function rowAnchor(table: EntityTableShape, column: string, side: 0 | 1) {
-  const index = table.props.columns.findIndex((c) => c.name === column);
-  const height = entityTableHeight(table.props.columns.length);
+  const index = table.props.rows.findIndex((r) => r.name === column);
   // An unknown column points at the table header instead.
   const y = index === -1 ? HEADER_HEIGHT / 2 : HEADER_HEIGHT + (index + 0.5) * ROW_HEIGHT;
-  return { x: side, y: y / height };
+  return { x: side, y: y / table.props.h };
+}
+
+type ColumnInput = { name: string; type: string; primaryKey?: boolean; foreignKey?: boolean };
+
+function toRows(columns: ColumnInput[], foreignKeys: Set<string> = new Set()): EntityRow[] {
+  return columns.map((c) => ({
+    id: newRowId(),
+    name: c.name,
+    dataType: c.type,
+    isPK: !!c.primaryKey,
+    isFK: !!c.foreignKey || foreignKeys.has(c.name),
+  }));
 }
 
 export async function drawTables(editor: Editor, input: DrawTablesInput) {
@@ -206,6 +218,10 @@ export async function drawTables(editor: Editor, input: DrawTablesInput) {
 
   const ids = new Map<string, TLShapeId>();
   for (const { x, y, table } of placed) {
+    // A column named as the source of a relation is a foreign key.
+    const foreignKeys = new Set(
+      input.relations.filter((r) => r.fromTable === table.name).map((r) => r.fromColumn),
+    );
     const id = createShapeId();
     editor.createShape<EntityTableShape>({
       id,
@@ -214,13 +230,9 @@ export async function drawTables(editor: Editor, input: DrawTablesInput) {
       y,
       props: {
         w: width,
-        name: table.name,
-        columns: table.columns.map((c) => ({
-          id: newColumnId(),
-          name: c.name,
-          type: c.type,
-          isPrimaryKey: !!c.primaryKey,
-        })),
+        h: entityTableHeight(table.columns.length),
+        tableName: table.name,
+        rows: toRows(table.columns, foreignKeys),
       },
     });
     ids.set(table.name, id);
@@ -261,15 +273,8 @@ export function editCanvas(editor: Editor, input: EditCanvasInput) {
           id: shape.id,
           type: ENTITY_TABLE_TYPE,
           props: {
-            ...(update.tableName !== undefined && { name: update.tableName }),
-            ...(update.columns && {
-              columns: update.columns.map((c) => ({
-                id: newColumnId(),
-                name: c.name,
-                type: c.type,
-                isPrimaryKey: !!c.primaryKey,
-              })),
-            }),
+            ...(update.tableName !== undefined && { tableName: update.tableName }),
+            ...(update.columns && { rows: toRows(update.columns) }),
           },
         });
       } else if (update.label !== undefined && "richText" in shape.props) {
@@ -324,8 +329,15 @@ export function buildAgentContext(
       .map((shape) => {
         const base = { id: shape.id, type: shape.type, x: Math.round(shape.x), y: Math.round(shape.y) };
         if (shape.type === ENTITY_TABLE_TYPE) {
-          const { name, columns } = (shape as EntityTableShape).props;
-          return { ...base, name, columns: columns.map((c) => `${c.name}: ${c.type}${c.isPrimaryKey ? " (pk)" : ""}`) };
+          const { tableName, rows } = (shape as EntityTableShape).props;
+          return {
+            ...base,
+            tableName,
+            columns: rows.map((r) => {
+              const keys = [r.isPK && "pk", r.isFK && "fk"].filter(Boolean).join(", ");
+              return `${r.name}: ${r.dataType}${keys ? ` (${keys})` : ""}`;
+            }),
+          };
         }
         if (shape.type === "arrow") {
           const bindings = canvas.getBindingsFromShape<TLArrowBinding>(shape, "arrow");

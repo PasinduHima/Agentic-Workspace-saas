@@ -1,40 +1,61 @@
-import type { Editor, TLArrowBinding } from "tldraw";
+import type { Editor, TLArrowBinding, TLBinding } from "tldraw";
 import {
   ENTITY_TABLE_TYPE,
   HEADER_HEIGHT,
   ROW_HEIGHT,
-  entityTableHeight,
   type EntityTableShape,
 } from "./EntityTableShapeUtil";
 
 /**
- * When an arrow is attached to an ERD table, moves its end to the left or right edge (whichever
- * is nearer) of the row it was dropped on, so relationships point at a column, not the middle of
- * the table. Arrows dropped on the header stay attached to the table as a whole.
+ * The anchor an arrow end should use on a table: the nearer side edge, at the middle of the row
+ * under `anchor`. Returns null for the header (the arrow then points at the table as a whole) or
+ * an empty table.
  */
-export function snapArrowBindingToRow(editor: Editor, binding: TLArrowBinding) {
-  const target = editor.getShape(binding.toId);
-  if (!target || target.type !== ENTITY_TABLE_TYPE) return;
+export function rowAnchorFor(table: EntityTableShape, anchor: { x: number; y: number }) {
+  const { rows, h } = table.props;
+  const y = anchor.y * h;
+  if (rows.length === 0 || y < HEADER_HEIGHT) return null;
 
-  const { columns } = (target as EntityTableShape).props;
-  if (columns.length === 0) return;
+  const row = Math.min(rows.length - 1, Math.floor((y - HEADER_HEIGHT) / ROW_HEIGHT));
+  return {
+    x: anchor.x < 0.5 ? 0 : 1,
+    y: (HEADER_HEIGHT + (row + 0.5) * ROW_HEIGHT) / h,
+  };
+}
 
-  const height = entityTableHeight(columns.length);
-  const { normalizedAnchor } = binding.props;
-  const y = normalizedAnchor.y * height;
-  if (y < HEADER_HEIGHT) return;
+/**
+ * Snaps arrow ends drawn onto a table to the nearest row, so relationships point at real
+ * columns. Runs before a binding is stored, so the snapped anchor is what gets saved and synced
+ * (no second write), and it also re-snaps while an arrow end is dragged to another row.
+ * Bindings from collaborators arrive already snapped and pass through. Returns a cleanup.
+ */
+export function registerEntityTableArrowSnapping(editor: Editor) {
+  const snap = <B extends TLBinding>(binding: B, source: "remote" | "user"): B => {
+    if (source !== "user" || binding.type !== "arrow") return binding;
 
-  const row = Math.min(columns.length - 1, Math.floor((y - HEADER_HEIGHT) / ROW_HEIGHT));
-  const rowCenter = HEADER_HEIGHT + (row + 0.5) * ROW_HEIGHT;
+    const arrow = binding as TLArrowBinding;
+    const target = editor.getShape(arrow.toId);
+    if (target?.type !== ENTITY_TABLE_TYPE) return binding;
 
-  editor.updateBinding<TLArrowBinding>({
-    id: binding.id,
-    type: "arrow",
-    props: {
-      ...binding.props,
-      normalizedAnchor: { x: normalizedAnchor.x < 0.5 ? 0 : 1, y: rowCenter / height },
-      isPrecise: true,
-      isExact: false,
-    },
-  });
+    const anchor = rowAnchorFor(target as EntityTableShape, arrow.props.normalizedAnchor);
+    if (!anchor) return binding;
+
+    return {
+      ...arrow,
+      props: { ...arrow.props, normalizedAnchor: anchor, isPrecise: true, isExact: false },
+    } as B;
+  };
+
+  const stopCreate = editor.sideEffects.registerBeforeCreateHandler("binding", (binding, source) =>
+    snap(binding, source),
+  );
+  const stopChange = editor.sideEffects.registerBeforeChangeHandler(
+    "binding",
+    (_prev, next, source) => snap(next, source),
+  );
+
+  return () => {
+    stopCreate();
+    stopChange();
+  };
 }
