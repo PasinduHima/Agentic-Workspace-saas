@@ -6,12 +6,16 @@ import type { TLEditorSnapshot } from "tldraw";
 import { prisma } from "@/lib/prisma";
 import { canAccessWorkspace } from "@/lib/workspace-access";
 import { Button } from "@/components/ui/button";
-import { EditableWorkspaceName } from "./_components/EditableWorkspaceName";
+import { EditableWorkspaceName } from "@/components/EditableWorkspaceName";
 import { DocEditor } from "@/components/DocEditorLoader";
 import { CanvasEditor } from "./_components/CanvasEditor";
 import { AgentToggleButton } from "./_components/AgentToggleButton";
 import { ShareDialog } from "./_components/ShareDialog";
-import { getEntitlements, workspaceOwnerId, workspaceOwnerSelect } from "@/lib/billing";
+import {
+  getEntitlements,
+  workspaceOwnerId,
+  workspaceOwnerSelect,
+} from "@/lib/billing";
 import { PlanButton } from "@/components/PlanButton";
 import { WorkspaceEditorsProvider } from "@/components/WorkspaceEditorsContext";
 import {
@@ -72,7 +76,10 @@ export default async function WorkspacePage({
                 className="size-6"
               />
             </Link>
-            <EditableWorkspaceName workspaceId={id} initialName={workspace.name} />
+            <EditableWorkspaceName
+              workspaceId={id}
+              initialName={workspace.name}
+            />
           </div>
 
           <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/3 p-1">
@@ -84,7 +91,13 @@ export default async function WorkspacePage({
                 size="sm"
                 className="capitalize"
               >
-                <Link href={mode === "both" ? `/workspace/${id}` : `/workspace/${id}?view=${mode}`}>
+                <Link
+                  href={
+                    mode === "both"
+                      ? `/workspace/${id}`
+                      : `/workspace/${id}?view=${mode}`
+                  }
+                >
                   {mode === "doc" ? "Document" : mode}
                 </Link>
               </Button>
@@ -100,12 +113,19 @@ export default async function WorkspacePage({
               canShare={entitlements.publicSharing}
               canExportPdf={entitlements.pdfExport}
             />
-            <AgentToggleButton workspaceId={id} initialPrompt={typeof prompt === "string" ? prompt : undefined} />
+            <AgentToggleButton
+              workspaceId={id}
+              initialPrompt={typeof prompt === "string" ? prompt : undefined}
+            />
           </div>
         </header>
 
         {/* key gives each view a fresh panel group, so an old layout isn't applied to new panels */}
-        <ResizablePanelGroup key={view} orientation="horizontal" className="flex-1">
+        <ResizablePanelGroup
+          key={view}
+          orientation="horizontal"
+          className="flex-1"
+        >
           {showDoc && (
             <ResizablePanel defaultSize={35} minSize={20}>
               <DocEditor
@@ -113,7 +133,9 @@ export default async function WorkspacePage({
                 workspaceId={id}
                 initialContent={workspace.doc?.content as Block[] | null}
                 initialState={
-                  workspace.doc?.yjsState ? Buffer.from(workspace.doc.yjsState).toString("base64") : null
+                  workspace.doc?.yjsState
+                    ? Buffer.from(workspace.doc.yjsState).toString("base64")
+                    : null
                 }
               />
             </ResizablePanel>
@@ -123,7 +145,9 @@ export default async function WorkspacePage({
             <ResizablePanel defaultSize={75} minSize={20}>
               <CanvasEditor
                 workspaceId={id}
-                initialSnapshot={workspace.canvas?.content as TLEditorSnapshot | null}
+                initialSnapshot={
+                  workspace.canvas?.content as TLEditorSnapshot | null
+                }
               />
             </ResizablePanel>
           )}

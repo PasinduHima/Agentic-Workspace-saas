@@ -10,14 +10,18 @@ const AppShell = ({ children }: { children: React.ReactNode }) => {
   const isFullScreenRoute =
     pathname?.startsWith("/workspace/") || pathname?.startsWith("/shared");
 
-  if (isFullScreenRoute) {
-    return <>{children}</>;
-  }
+  // The upgrade dialog wraps every route: the site header's plan button opens it, and so do the
+  // workspace's own header, agent panel and Share dialog on the full-screen routes.
   return (
-    // The header's plan button opens the upgrade dialog, so the provider wraps both.
     <UpgradeDialogProvider>
-      <SiteHeader />
-      <div className="flex flex-1 flex-col pt-18">{children}</div>
+      {isFullScreenRoute ? (
+        children
+      ) : (
+        <>
+          <SiteHeader />
+          <div className="flex flex-1 flex-col pt-18">{children}</div>
+        </>
+      )}
     </UpgradeDialogProvider>
   );
 };
