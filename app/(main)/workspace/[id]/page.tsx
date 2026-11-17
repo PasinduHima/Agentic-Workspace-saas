@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { canAccessWorkspace } from "@/lib/workspace-access";
 import { Button } from "@/components/ui/button";
 import { EditableWorkspaceName } from "@/components/EditableWorkspaceName";
-import { DocEditor } from "@/components/DocEditorLoader";
+import { DocEditor } from "@/app/_components/DocEditorLoader";
 import { CanvasEditor } from "./_components/CanvasEditor";
 import { AgentToggleButton } from "./_components/AgentToggleButton";
 import { ShareDialog } from "./_components/ShareDialog";

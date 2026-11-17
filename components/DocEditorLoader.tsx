@@ -2,15 +2,13 @@
 
 import dynamic from "next/dynamic";
 
-// BlockNote needs the browser (DOM, selection APIs), so the editor is loaded on the client only.
-// This wrapper exists because `ssr: false` is only allowed inside a client component, and the
-// workspace page is a server component.
-export const DocEditor = dynamic(
-  () => import("@/components/DocEditor").then((mod) => mod.DocEditor),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="p-8 text-sm text-muted-foreground">Loading document…</div>
-    ),
-  },
-);
+// BlockNote's editor touches `window` during creation, so it can't run during Next's SSR pass.
+// ssr: false only works from within a client boundary, hence this thin wrapper module —
+// server components (the workspace and shared pages) import from here instead.
+export const DocEditor = dynamic(() => import("@/components/DocEditor").then((m) => m.DocEditor), {
+  ssr: false,
+});
+
+export const DocViewer = dynamic(() => import("@/components/DocViewer").then((m) => m.DocViewer), {
+  ssr: false,
+});
