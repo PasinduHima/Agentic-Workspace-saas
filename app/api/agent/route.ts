@@ -4,7 +4,7 @@ import { agentToolDefs } from "@/lib/agent-tools";
 import { isAutomaticFollowUp, parseAgentRequest } from "@/lib/agent-request";
 import { PROMPT_LIMIT_ERROR } from "@/lib/plan-limits";
 import { checkUser } from "@/actions/check-user";
-import { canAccessWorkspace } from "@/lib/workspace-access";
+import { canEditWorkspace } from "@/lib/workspace-access";
 import { getPromptUsage, getWorkspaceOwnerId, recordPrompt } from "@/lib/billing";
 
 const SYSTEM_PROMPT = `You are Outpost's workspace agent. A workspace has two surfaces: a canvas (an infinite whiteboard for diagrams) and a doc (a rich-text document). You change them only by calling tools, never by describing changes in text. Never use em dashes in your replies.
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   if (!body) return new Response("Invalid request", { status: 400 });
   const { messages, workspaceId, canvasContext, docContext } = body;
 
-  if (!(await canAccessWorkspace(workspaceId))) return new Response("Workspace not found", { status: 404 });
+  if (!(await canEditWorkspace(workspaceId))) return new Response("Workspace not found", { status: 404 });
 
   // The limit applies to every request (checked before calling Gemini, so an exhausted plan costs
   // nothing). Only new prompts are counted: the automatic follow-ups after tool calls continue

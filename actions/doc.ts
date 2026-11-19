@@ -1,7 +1,7 @@
 "use server";
 
 import * as Y from "yjs";
-import { canAccessWorkspace } from "@/lib/workspace-access";
+import { canEditWorkspace } from "@/lib/workspace-access";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/lib/generated/prisma/client";
 
@@ -22,7 +22,7 @@ export async function saveDocContent(
   yjsState: string,
   content: Prisma.InputJsonValue
 ) {
-  if (!(await canAccessWorkspace(workspaceId))) throw new Error("Workspace not found");
+  if (!(await canEditWorkspace(workspaceId))) throw new Error("Workspace not found");
 
   // Checked at runtime too: a caller passing these in the wrong order type-checks (JSON values
   // are `any`) but would overwrite the doc with junk.

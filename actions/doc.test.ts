@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/workspace-access", () => ({
-  canAccessWorkspace: async () => state.canAccess,
+  canEditWorkspace: async () => state.canAccess,
 }));
 
 vi.mock("@/lib/prisma", () => ({

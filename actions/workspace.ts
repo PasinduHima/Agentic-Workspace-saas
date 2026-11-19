@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { checkUser } from "@/actions/check-user";
-import { canAccessWorkspace } from "@/lib/workspace-access";
+import { canAccessWorkspace, canEditWorkspace } from "@/lib/workspace-access";
 import { scopeWhere } from "@/lib/workspace-scope";
 import { prisma } from "@/lib/prisma";
 import { WorkspaceStatus } from "@/lib/generated/prisma/enums";
@@ -64,7 +64,7 @@ export async function createWorkspace(
 
 // Leaving description undefined keeps it as-is (the header's inline rename only sends a name).
 export async function updateWorkspace(workspaceId: string, name: string, description?: string) {
-  if (!(await canAccessWorkspace(workspaceId))) throw new Error("Workspace not found");
+  if (!(await canEditWorkspace(workspaceId))) throw new Error("Workspace not found");
 
   const trimmedName = name.trim();
   if (!trimmedName) throw new Error("Workspace name is required");
@@ -108,7 +108,7 @@ export async function moveWorkspace(workspaceId: string, status: WorkspaceStatus
   if (!Object.values(WorkspaceStatus).includes(status) || !Number.isFinite(position)) {
     throw new Error("Invalid move");
   }
-  if (!(await canAccessWorkspace(workspaceId))) throw new Error("Workspace not found");
+  if (!(await canEditWorkspace(workspaceId))) throw new Error("Workspace not found");
 
   await prisma.workspace.update({
     where: { id: workspaceId },
@@ -122,7 +122,7 @@ export async function setWorkspaceSharing(
   workspaceId: string,
   enabled: boolean
 ): Promise<{ shareToken: string | null } | { limit: LimitError }> {
-  if (!(await canAccessWorkspace(workspaceId))) throw new Error("Workspace not found");
+  if (!(await canEditWorkspace(workspaceId))) throw new Error("Workspace not found");
 
   if (enabled && !(await getEntitlements(await getWorkspaceOwnerId(workspaceId))).publicSharing) {
     return { limit: "sharing" };
