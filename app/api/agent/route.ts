@@ -3,7 +3,9 @@ import { streamText, convertToModelMessages } from "ai";
 import { agentToolDefs } from "@/lib/agent-tools";
 import { isAutomaticFollowUp, parseAgentRequest } from "@/lib/agent-request";
 import { PROMPT_LIMIT_ERROR } from "@/lib/plan-limits";
+import { auth } from "@clerk/nextjs/server";
 import { checkUser } from "@/actions/check-user";
+import { prisma } from "@/lib/prisma";
 import { canEditWorkspace } from "@/lib/workspace-access";
 import { getPromptUsage, getWorkspaceOwnerId, recordPrompt } from "@/lib/billing";
 
@@ -37,7 +39,13 @@ Canvas layout rules: diagrams must never look cluttered or have overlapping shap
 const NOT_OPEN = "(not open in this view, so its tools will fail)";
 
 export async function POST(req: Request) {
-  const user = await checkUser();
+  // auth() reads the session token locally; checkUser() calls Clerk's API (currentUser), so it's
+  // only needed the first time, to create the row. This runs on every automatic tool follow-up.
+  const { userId } = await auth();
+  if (!userId) return new Response("Unauthorized", { status: 401 });
+  const user =
+    (await prisma.user.findUnique({ where: { clerkId: userId }, select: { id: true } })) ??
+    (await checkUser());
   if (!user) return new Response("Unauthorized", { status: 401 });
 
   const body = await parseAgentRequest(await req.json().catch(() => null));
