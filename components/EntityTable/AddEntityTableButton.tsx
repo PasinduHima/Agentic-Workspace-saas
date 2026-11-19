@@ -2,7 +2,7 @@
 
 import { TldrawUiMenuItem, createShapeId, useEditor } from "tldraw";
 import { Table2 } from "lucide-react";
-import { ENTITY_TABLE_TYPE, type EntityTableShape } from "./EntityTableShapeUtil";
+import { ENTITY_TABLE_TYPE, type EntityTableShape } from "./EntityTableShape";
 
 // Toolbar button that drops a starter table (id uuid PK, created_at timestamptz) in the middle of
 // the view and selects it.

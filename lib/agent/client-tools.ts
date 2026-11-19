@@ -16,12 +16,12 @@ import type { BlockNoteEditor } from "@blocknote/core";
 import {
   ENTITY_TABLE_TYPE,
   HEADER_HEIGHT,
-  ROW_HEIGHT,
-  entityTableHeight,
-  newRowId,
+  getTableHeight,
+  newRow,
+  rowAnchorY,
   type EntityRow,
   type EntityTableShape,
-} from "@/components/EntityTable/EntityTableShapeUtil";
+} from "@/components/EntityTable/EntityTableShape";
 import type {
   AgentContext,
   DrawDiagramInput,
@@ -175,22 +175,23 @@ export async function drawDiagram(editor: Editor, input: DrawDiagramInput) {
 }
 
 function rowAnchor(table: EntityTableShape, column: string, side: 0 | 1) {
-  const index = table.props.rows.findIndex((r) => r.name === column);
+  const { rows, h } = table.props;
+  const index = rows.findIndex((r) => r.name === column);
   // An unknown column points at the table header instead.
-  const y = index === -1 ? HEADER_HEIGHT / 2 : HEADER_HEIGHT + (index + 0.5) * ROW_HEIGHT;
-  return { x: side, y: y / table.props.h };
+  return { x: side, y: index === -1 ? HEADER_HEIGHT / 2 / h : rowAnchorY(index, rows.length) };
 }
 
 type ColumnInput = { name: string; type: string; primaryKey?: boolean; foreignKey?: boolean };
 
 function toRows(columns: ColumnInput[], foreignKeys: Set<string> = new Set()): EntityRow[] {
-  return columns.map((c) => ({
-    id: newRowId(),
-    name: c.name,
-    dataType: c.type,
-    isPK: !!c.primaryKey,
-    isFK: !!c.foreignKey || foreignKeys.has(c.name),
-  }));
+  return columns.map((c) =>
+    newRow({
+      name: c.name,
+      dataType: c.type,
+      isPK: !!c.primaryKey,
+      isFK: !!c.foreignKey || foreignKeys.has(c.name),
+    }),
+  );
 }
 
 export async function drawTables(editor: Editor, input: DrawTablesInput) {
@@ -203,7 +204,7 @@ export async function drawTables(editor: Editor, input: DrawTablesInput) {
   const rowHeights: number[] = [];
   input.tables.forEach((t, i) => {
     const row = Math.floor(i / perRow);
-    rowHeights[row] = Math.max(rowHeights[row] ?? 0, entityTableHeight(t.columns.length));
+    rowHeights[row] = Math.max(rowHeights[row] ?? 0, getTableHeight(t.columns.length));
   });
 
   const placed = input.tables.map((t, i) => {
@@ -212,7 +213,7 @@ export async function drawTables(editor: Editor, input: DrawTablesInput) {
     return { x: origin.x + (i % perRow) * (width + gap), y: origin.y + y, table: t };
   });
   const bounds = Box.Common(
-    placed.map((p) => new Box(p.x, p.y, width, entityTableHeight(p.table.columns.length))),
+    placed.map((p) => new Box(p.x, p.y, width, getTableHeight(p.table.columns.length))),
   );
   editor.zoomToBounds(bounds, { inset: 64, animation: { duration: 300 } });
 
@@ -230,7 +231,7 @@ export async function drawTables(editor: Editor, input: DrawTablesInput) {
       y,
       props: {
         w: width,
-        h: entityTableHeight(table.columns.length),
+        h: getTableHeight(table.columns.length),
         tableName: table.name,
         rows: toRows(table.columns, foreignKeys),
       },

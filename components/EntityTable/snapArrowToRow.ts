@@ -1,10 +1,10 @@
 import type { Editor, TLArrowBinding, TLBinding } from "tldraw";
 import {
   ENTITY_TABLE_TYPE,
-  HEADER_HEIGHT,
-  ROW_HEIGHT,
+  rowAnchorY,
+  rowIndexAtY,
   type EntityTableShape,
-} from "./EntityTableShapeUtil";
+} from "./EntityTableShape";
 
 /**
  * The anchor an arrow end should use on a table: the nearer side edge, at the middle of the row
@@ -13,14 +13,9 @@ import {
  */
 export function rowAnchorFor(table: EntityTableShape, anchor: { x: number; y: number }) {
   const { rows, h } = table.props;
-  const y = anchor.y * h;
-  if (rows.length === 0 || y < HEADER_HEIGHT) return null;
-
-  const row = Math.min(rows.length - 1, Math.floor((y - HEADER_HEIGHT) / ROW_HEIGHT));
-  return {
-    x: anchor.x < 0.5 ? 0 : 1,
-    y: (HEADER_HEIGHT + (row + 0.5) * ROW_HEIGHT) / h,
-  };
+  const row = rowIndexAtY(anchor.y * h, rows.length);
+  if (row === -1) return null;
+  return { x: anchor.x < 0.5 ? 0 : 1, y: rowAnchorY(row, rows.length) };
 }
 
 /**

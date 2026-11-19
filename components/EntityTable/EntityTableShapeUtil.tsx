@@ -13,10 +13,21 @@ import {
   useIsEditing,
   type RecordProps,
   type TLResizeInfo,
-  type TLShape,
 } from "tldraw";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  ENTITY_TABLE_TYPE,
+  HEADER_HEIGHT,
+  ROW_HEIGHT,
+  TABLE_WIDTH,
+  getTableHeight,
+  newRow,
+  rowIndexAtY,
+  type EntityRow,
+  type EntityTableProps,
+  type EntityTableShape,
+} from "./EntityTableShape";
 
 /*
  * An ERD table on the canvas (https://tldraw.dev/docs/shapes): a header with the table's name,
@@ -25,45 +36,11 @@ import { cn } from "@/lib/utils";
  *
  * Editing: double-click the table to rename it and add rows; double-click a row to edit its name
  * and type, toggle PK/FK, or delete it.
+ *
+ * The types, sizes and row math live in ./EntityTableShape.
  */
 
-export const ENTITY_TABLE_TYPE = "entity-table";
-
-export const HEADER_HEIGHT = 40;
-export const ROW_HEIGHT = 32;
 const MIN_WIDTH = 200;
-
-export type EntityRow = {
-  id: string;
-  name: string;
-  dataType: string;
-  isPK: boolean;
-  isFK: boolean;
-};
-
-export type EntityTableProps = {
-  w: number;
-  h: number;
-  tableName: string;
-  rows: EntityRow[];
-};
-
-declare module "tldraw" {
-  export interface TLGlobalShapePropsMap {
-    [ENTITY_TABLE_TYPE]: EntityTableProps;
-  }
-}
-
-export type EntityTableShape = TLShape<typeof ENTITY_TABLE_TYPE>;
-
-/** Header plus one fixed-height line per row (an empty table keeps one line of space). */
-export function entityTableHeight(rowCount: number) {
-  return HEADER_HEIGHT + Math.max(rowCount, 1) * ROW_HEIGHT;
-}
-
-export function newRowId() {
-  return Math.random().toString(36).slice(2, 10);
-}
 
 // Tables saved before rows existed had `name` and `columns` ({ id, name, type, isPrimaryKey }).
 const versions = createShapePropsMigrationIds(ENTITY_TABLE_TYPE, { RowsModel: 1 });
@@ -82,7 +59,7 @@ const migrations = createShapePropsMigrationSequence({
             isFK: false,
           }),
         );
-        return { ...props, tableName: name ?? "table", rows, h: entityTableHeight(rows.length) };
+        return { ...props, tableName: name ?? "table", rows, h: getTableHeight(rows.length) };
       },
     },
   ],
@@ -90,7 +67,7 @@ const migrations = createShapePropsMigrationSequence({
 
 /** The same shape with `h` matched to its rows; used for every create and update. */
 function withRowHeight(shape: EntityTableShape): EntityTableShape {
-  const h = entityTableHeight(shape.props.rows.length);
+  const h = getTableHeight(shape.props.rows.length);
   return shape.props.h === h ? shape : { ...shape, props: { ...shape.props, h } };
 }
 
@@ -114,11 +91,11 @@ export class EntityTableShapeUtil extends BaseBoxShapeUtil<EntityTableShape> {
   };
 
   override getDefaultProps(): EntityTableProps {
-    const rows: EntityRow[] = [
-      { id: newRowId(), name: "id", dataType: "uuid", isPK: true, isFK: false },
-      { id: newRowId(), name: "created_at", dataType: "timestamptz", isPK: false, isFK: false },
+    const rows = [
+      newRow({ name: "id", dataType: "uuid", isPK: true }),
+      newRow({ name: "created_at", dataType: "timestamptz" }),
     ];
-    return { w: 260, h: entityTableHeight(rows.length), tableName: "new_table", rows };
+    return { w: TABLE_WIDTH, h: getTableHeight(rows.length), tableName: "new_table", rows };
   }
 
   override canEdit() {
@@ -142,7 +119,7 @@ export class EntityTableShapeUtil extends BaseBoxShapeUtil<EntityTableShape> {
       y: info.initialShape.y,
       props: {
         w: Math.max(MIN_WIDTH, resized.props.w),
-        h: entityTableHeight(shape.props.rows.length),
+        h: getTableHeight(shape.props.rows.length),
       },
     };
   }
@@ -199,8 +176,7 @@ function EntityTable({ shape }: { shape: EntityTableShape }) {
       setOpenRowId(null);
     } else {
       const point = editor.getPointInShapeSpace(shape, editor.inputs.getCurrentPagePoint());
-      const index = Math.floor((point.y - HEADER_HEIGHT) / ROW_HEIGHT);
-      setOpenRowId(point.y >= HEADER_HEIGHT ? (rows[index]?.id ?? null) : null);
+      setOpenRowId(rows[rowIndexAtY(point.y, rows.length)]?.id ?? null);
     }
   }
 
@@ -211,7 +187,7 @@ function EntityTable({ shape }: { shape: EntityTableShape }) {
     update({ rows: rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
 
   const addRow = () => {
-    const row: EntityRow = { id: newRowId(), name: "", dataType: "text", isPK: false, isFK: false };
+    const row = newRow();
     update({ rows: [...rows, row] });
     setOpenRowId(row.id);
   };

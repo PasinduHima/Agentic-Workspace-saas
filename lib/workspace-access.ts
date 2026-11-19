@@ -43,3 +43,4 @@ export async function canEditWorkspace(workspaceId: string) {
   const role = await getWorkspaceRole(workspaceId);
   return role !== null && role !== VIEWER_ROLE;
 }
+                                                                                                                                                      
