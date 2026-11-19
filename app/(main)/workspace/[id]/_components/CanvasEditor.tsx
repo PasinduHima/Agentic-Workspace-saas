@@ -125,18 +125,24 @@ export function CanvasEditor({
       editor.loadSnapshot(initialSnapshot);
     }
 
-    editor.store.listen(
+    const save = () => {
+      saveTimeout.current = null;
+      // getSnapshot() carries non-plain internals (schema is a class instance, not JSON) that
+      // occasionally fail to cross the Server Action boundary as "opaque temporary reference"
+      // errors — round-tripping through JSON strips those and leaves genuinely plain data.
+      const plainSnapshot = JSON.parse(
+        JSON.stringify(editor.getSnapshot())
+      ) as Prisma.InputJsonValue;
+      saveCanvasContent(workspaceId, plainSnapshot).catch((error: unknown) => {
+        // The next edit saves again, and the sync room still has the change.
+        console.error("Failed to save canvas", error);
+      });
+    };
+
+    const stopListening = editor.store.listen(
       () => {
         if (saveTimeout.current) clearTimeout(saveTimeout.current);
-        saveTimeout.current = setTimeout(() => {
-          // getSnapshot() carries non-plain internals (schema is a class instance, not JSON) that
-          // occasionally fail to cross the Server Action boundary as "opaque temporary reference"
-          // errors — round-tripping through JSON strips those and leaves genuinely plain data.
-          const plainSnapshot = JSON.parse(
-            JSON.stringify(editor.getSnapshot())
-          ) as Prisma.InputJsonValue;
-          saveCanvasContent(workspaceId, plainSnapshot);
-        }, SAVE_DEBOUNCE_MS);
+        saveTimeout.current = setTimeout(save, SAVE_DEBOUNCE_MS);
       },
       { source: "user", scope: "document" }
     );
@@ -144,9 +150,15 @@ export function CanvasEditor({
     // Arrows drawn onto an ERD table snap to the nearest row (see snapArrowToRow.ts).
     const stopSnapping = registerEntityTableArrowSnapping(editor);
 
-    // On unmount (e.g. switching to the Document view), stop snapping and clear the editor from
-    // context, so nothing keeps a disposed editor.
+    // On unmount (e.g. switching to the Document view), save any edit still waiting on the
+    // debounce (it would otherwise be lost), stop listening and snapping, and clear the editor
+    // from context, so nothing keeps a disposed editor.
     return () => {
+      if (saveTimeout.current) {
+        clearTimeout(saveTimeout.current);
+        save();
+      }
+      stopListening();
       stopSnapping();
       setCanvasEditor(null);
     };
