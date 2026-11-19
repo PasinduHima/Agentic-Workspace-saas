@@ -1,4 +1,5 @@
 import { clerkClient } from "@clerk/nextjs/server";
+import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { prisma } from "@/lib/prisma";
 import { FREE_MONTHLY_PROMPTS } from "@/lib/plan-limits";
 
@@ -38,8 +39,13 @@ export async function getEntitlements(ownerId: string) {
         item.plan?.features.forEach((feature) => features.add(feature.slug));
       }
     }
-  } catch {
-    // No subscription (or Clerk unreachable): treat as the free plan.
+  } catch (error) {
+    // No subscription (404) means the free plan. Anything else (Clerk down, bad key) also falls
+    // back to free so pages still render, but is logged: otherwise paying customers would be
+    // silently limited with no trace of why.
+    if (!(isClerkAPIResponseError(error) && error.status === 404)) {
+      console.error(`Failed to load billing subscription for ${ownerId}`, error);
+    }
   }
 
   const paid = PROMPT_FEATURES.find(({ feature }) => features.has(feature));
