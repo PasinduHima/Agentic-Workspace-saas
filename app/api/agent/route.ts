@@ -1,6 +1,7 @@
 import { google } from "@ai-sdk/google";
-import { streamText, convertToModelMessages, type UIMessage } from "ai";
+import { streamText, convertToModelMessages } from "ai";
 import { agentToolDefs } from "@/lib/agent-tools";
+import { isAutomaticFollowUp, parseAgentRequest } from "@/lib/agent-request";
 import { PROMPT_LIMIT_ERROR } from "@/lib/plan-limits";
 import { checkUser } from "@/actions/check-user";
 import { canAccessWorkspace } from "@/lib/workspace-access";
@@ -39,29 +40,19 @@ export async function POST(req: Request) {
   const user = await checkUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
 
-  const {
-    messages,
-    workspaceId,
-    canvasContext,
-    docContext,
-  }: {
-    messages: UIMessage[];
-    workspaceId: string;
-    canvasContext: string | null;
-    docContext: string | null;
-  } = await req.json();
+  const body = await parseAgentRequest(await req.json().catch(() => null));
+  if (!body) return new Response("Invalid request", { status: 400 });
+  const { messages, workspaceId, canvasContext, docContext } = body;
 
   if (!(await canAccessWorkspace(workspaceId))) return new Response("Workspace not found", { status: 404 });
 
-  // Only a message the user typed counts as a prompt; the automatic follow-ups after tool calls
-  // end with the agent's own message, so a prompt that draws 20 shapes still counts once.
-  let ownerId: string | null = null;
-  if (messages.at(-1)?.role === "user") {
-    ownerId = await getWorkspaceOwnerId(workspaceId);
-    const { used, limit } = await getPromptUsage(ownerId);
-    // Checked before calling Gemini, so an exhausted plan costs nothing.
-    if (used >= limit) return Response.json({ error: PROMPT_LIMIT_ERROR, used, limit }, { status: 402 });
-  }
+  // The limit applies to every request (checked before calling Gemini, so an exhausted plan costs
+  // nothing). Only new prompts are counted: the automatic follow-ups after tool calls continue
+  // one, so a prompt that draws 20 shapes still counts once.
+  const ownerId = await getWorkspaceOwnerId(workspaceId);
+  const { used, limit } = await getPromptUsage(ownerId);
+  if (used >= limit) return Response.json({ error: PROMPT_LIMIT_ERROR, used, limit }, { status: 402 });
+  const countsAsPrompt = !isAutomaticFollowUp(messages);
 
   const result = streamText({
     model: google("gemini-3.5-flash-lite"),
@@ -75,7 +66,7 @@ export async function POST(req: Request) {
     },
     // Charged only once Gemini answers, so a failed request (e.g. high demand) costs nothing.
     onFinish: async () => {
-      if (ownerId) await recordPrompt(ownerId, user.id, workspaceId);
+      if (countsAsPrompt) await recordPrompt(ownerId, user.id, workspaceId);
     },
   });
 
