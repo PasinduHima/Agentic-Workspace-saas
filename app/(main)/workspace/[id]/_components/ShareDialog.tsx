@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Check, Copy, FileDown, Link2, RefreshCw, Share2 } from "lucide-react";
+import { Check, Copy, FileDown, Link2, Lock, RefreshCw, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { setWorkspaceSharing } from "@/actions/workspace";
 import { useFetch } from "@/hooks/use-fetch";
@@ -37,15 +37,6 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function blobToDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
-
 const noopSubscribe = () => () => {};
 
 /**
@@ -66,6 +57,7 @@ export function ShareDialog({
   canShare: boolean;
   canExportPdf: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const [shareToken, setShareToken] = useState(initialShareToken);
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState<"doc" | "canvas" | null>(null);
@@ -77,11 +69,17 @@ export function ShareDialog({
   const origin = useSyncExternalStore(noopSubscribe, () => window.location.origin, () => "");
   const shareUrl = shareToken && origin ? `${origin}/shared/${shareToken}` : "";
 
+  // Close this dialog first, so the upgrade dialog isn't stacked on top of it.
+  const upgrade = (reason: (typeof UPGRADE_REASONS)[keyof typeof UPGRADE_REASONS]) => {
+    setOpen(false);
+    openUpgrade(reason);
+  };
+
   const updateSharing = async (enabled: boolean) => {
-    if (enabled && !canShare) return openUpgrade(UPGRADE_REASONS.sharing);
+    if (enabled && !canShare) return upgrade(UPGRADE_REASONS.sharing);
     const result = await setSharingFn(workspaceId, enabled);
     if (!result) return;
-    if ("limit" in result) return openUpgrade(UPGRADE_REASONS[result.limit]);
+    if ("limit" in result) return upgrade(UPGRADE_REASONS[result.limit]);
     setShareToken(result.shareToken);
     setCopied(false);
   };
@@ -97,23 +95,20 @@ export function ShareDialog({
   };
 
   const exportDoc = async () => {
-    if (!canExportPdf) return openUpgrade(UPGRADE_REASONS.pdfExport);
+    if (!canExportPdf) return upgrade(UPGRADE_REASONS.pdfExport);
     if (!docEditor) return;
     setExporting("doc");
     try {
-      // Loaded on demand: the exporter and its fonts are large and only needed here.
-      const { PDFExporter, typstDefaultSchemaMappings } = await import(
-        "@blocknote/xl-pdf-exporter"
-      );
-      const exporter = new PDFExporter(docEditor.schema, typstDefaultSchemaMappings);
-      const result = await exporter.toPDF(docEditor.document, {
-        title: workspaceName,
-        lang: "en",
-        tryDeclarePdfUA: false,
-      });
-      if (result.error) throw new Error(result.error);
-      download(result.blob, fileName(workspaceName, "doc"));
-    } catch {
+      // Loaded on demand: the exporter, react-pdf and their fonts are large and only needed here.
+      const [{ PDFExporter, pdfDefaultSchemaMappings }, { pdf }] = await Promise.all([
+        import("@blocknote/xl-pdf-exporter/react-pdf"),
+        import("@react-pdf/renderer"),
+      ]);
+      const exporter = new PDFExporter(docEditor.schema, pdfDefaultSchemaMappings);
+      const document = await exporter.toReactPDFDocument(docEditor.document);
+      download(await pdf(document).toBlob(), fileName(workspaceName, "doc"));
+    } catch (error) {
+      console.error("Doc PDF export failed", error);
       toast.error("Couldn't export the doc. Try again.");
     } finally {
       setExporting(null);
@@ -121,31 +116,34 @@ export function ShareDialog({
   };
 
   const exportCanvas = async () => {
-    if (!canExportPdf) return openUpgrade(UPGRADE_REASONS.pdfExport);
+    if (!canExportPdf) return upgrade(UPGRADE_REASONS.pdfExport);
     if (!canvasEditor) return;
     const shapeIds = [...canvasEditor.getCurrentPageShapeIds()];
     if (shapeIds.length === 0) return toast.info("The canvas is empty.");
 
     setExporting("canvas");
     try {
-      const { blob, width, height } = await canvasEditor.toImage(shapeIds, {
-        format: "png",
-        background: true,
-        padding: 32,
-        scale: 2,
-        darkMode: false,
-      });
-      const { jsPDF } = await import("jspdf");
-      // One page sized to the drawing, so nothing is cropped or shrunk onto A4.
+      const [{ url, width, height }, { jsPDF }] = await Promise.all([
+        canvasEditor.toImageDataUrl(shapeIds, {
+          format: "png",
+          background: true,
+          padding: 32,
+          scale: 2,
+          darkMode: false,
+        }),
+        import("jspdf"),
+      ]);
+      // One page the same size as the image, so nothing is cropped or shrunk onto A4.
       const pdf = new jsPDF({
         orientation: width >= height ? "landscape" : "portrait",
         unit: "px",
         format: [width, height],
         hotfixes: ["px_scaling"],
       });
-      pdf.addImage(await blobToDataUrl(blob), "PNG", 0, 0, width, height);
+      pdf.addImage(url, "PNG", 0, 0, width, height);
       download(pdf.output("blob"), fileName(workspaceName, "canvas"));
-    } catch {
+    } catch (error) {
+      console.error("Canvas PDF export failed", error);
       toast.error("Couldn't export the canvas. Try again.");
     } finally {
       setExporting(null);
@@ -153,7 +151,7 @@ export function ShareDialog({
   };
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-1.5">
           <Share2 className="size-4" />
@@ -180,15 +178,27 @@ export function ShareDialog({
                 {!canShare && " Available on paid plans."}
               </p>
             </div>
-            <Switch
-              checked={!!shareToken}
-              onCheckedChange={updateSharing}
-              disabled={!!savingSharing}
-              aria-label="Public link"
-            />
+            {canShare ? (
+              <Switch
+                checked={!!shareToken}
+                onCheckedChange={updateSharing}
+                disabled={!!savingSharing}
+                aria-label="Public link"
+              />
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 gap-1.5"
+                onClick={() => upgrade(UPGRADE_REASONS.sharing)}
+              >
+                <Lock className="size-3.5" />
+                Upgrade
+              </Button>
+            )}
           </div>
 
-          {shareUrl && (
+          {canShare && shareUrl && (
             <div className="flex gap-2">
               <Input
                 value={shareUrl}
@@ -230,14 +240,17 @@ export function ShareDialog({
           <div className="grid grid-cols-2 gap-2">
             <Button
               variant="outline"
+              className="gap-1.5"
               onClick={exportDoc}
               disabled={exporting !== null || (canExportPdf && !docEditor)}
               title={canExportPdf && !docEditor ? "Switch to a view with the doc to export it" : undefined}
             >
+              {!canExportPdf && <Lock className="size-3.5" />}
               {exporting === "doc" ? "Exporting…" : "Doc"}
             </Button>
             <Button
               variant="outline"
+              className="gap-1.5"
               onClick={exportCanvas}
               disabled={exporting !== null || (canExportPdf && !canvasEditor)}
               title={
@@ -246,6 +259,7 @@ export function ShareDialog({
                   : undefined
               }
             >
+              {!canExportPdf && <Lock className="size-3.5" />}
               {exporting === "canvas" ? "Exporting…" : "Canvas"}
             </Button>
           </div>
