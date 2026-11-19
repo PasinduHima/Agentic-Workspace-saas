@@ -2,87 +2,98 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import {
-  SubscriptionDetailsButton,
-  useSubscription,
-} from "@clerk/nextjs/experimental";
-import { getMyPromptUsage } from "@/actions/billing";
-import { Button } from "@/components/ui/button";
+import { SubscriptionDetailsButton, useSubscription } from "@clerk/nextjs/experimental";
+import { getActivePromptUsage } from "@/actions/usage";
 import { useUpgradeDialog } from "@/components/UpgradeDialog";
-import { UPGRADE_REASONS } from "@/lib/plan-limits";
 
-/** Fired by the agent panel after each prompt, so usage-aware UI can refresh. */
-export const PROMPT_USED_EVENT = "outpost:prompt-used";
+type Usage = Awaited<ReturnType<typeof getActivePromptUsage>>;
 
-// The active context's prompt usage, refreshed after each agent prompt.
-function usePromptUsage(enabled: boolean, payer: string) {
-  const [usage, setUsage] = useState<Awaited<ReturnType<typeof getMyPromptUsage>>>(null);
+const USAGE_CHANGED_EVENT = "outpost:prompt-usage-changed";
 
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    const load = () =>
-      getMyPromptUsage()
-        .then((next) => !cancelled && setUsage(next))
-        .catch(() => {});
-    load();
-    window.addEventListener(PROMPT_USED_EVENT, load);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(PROMPT_USED_EVENT, load);
-    };
-    // payer: reload when switching between personal and an org.
-  }, [enabled, payer]);
-
-  return usage;
+// Called after an agent response, so the header count stays current without a reload.
+export function refreshPromptUsage() {
+  window.dispatchEvent(new Event(USAGE_CHANGED_EVENT));
 }
 
-/**
- * Header button for signed-in users. On a paid plan it shows the plan's name and opens Clerk's
- * subscription details; otherwise it's an "Upgrade" button that opens the pricing dialog.
- * With `upgradeOnlyWhenOut` (the workspace header), free users only see it once this month's
- * agent prompts are used up, so it doesn't crowd the editor before it's needed.
- * The plan follows the active context: the selected org's, or the user's own without one.
- */
+// Header pill for the current context (personal account or the selected org): the plan name and
+// this month's agent prompts. Free plans get an Upgrade segment; paid plans open their subscription
+// details for members allowed to manage billing. `upgradeOnlyWhenOut` hides the Upgrade segment
+// until the prompts run out, for tighter spaces like the workspace header.
 export function PlanButton({ upgradeOnlyWhenOut = false }: { upgradeOnlyWhenOut?: boolean }) {
-  const { orgId } = useAuth();
-  const payer = orgId ? "organization" : "user";
-  const { data: subscription, isLoading } = useSubscription({ for: payer });
-  const usage = usePromptUsage(upgradeOnlyWhenOut, payer);
+  const { orgId, has } = useAuth();
+  const payerType = orgId ? "organization" : "user";
+  const { data: subscription } = useSubscription({ for: payerType });
+  const [usage, setUsage] = useState<Usage>(null);
   const openUpgrade = useUpgradeDialog();
 
-  // Render nothing while loading, so paid users don't see "Upgrade" flash first.
-  if (isLoading) return null;
+  // Refetch when switching between the personal account and an org, and after agent responses.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      getActivePromptUsage()
+        .then((next) => {
+          if (!cancelled) setUsage(next);
+        })
+        .catch((error: unknown) => {
+          // Keep showing the last known usage; the next agent response or org switch retries.
+          console.error("Failed to load prompt usage", error);
+        });
+    load();
+    window.addEventListener(USAGE_CHANGED_EVENT, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(USAGE_CHANGED_EVENT, load);
+    };
+  }, [orgId]);
 
-  const paidPlan = subscription?.subscriptionItems.find(
-    (item) =>
-      item.plan.hasBaseFee && (item.status === "active" || item.status === "past_due"),
-  )?.plan;
+  if (!usage) return null;
 
-  if (paidPlan) {
-    return (
-      <SubscriptionDetailsButton for={payer}>
-        <Button variant="outline" size="sm">
-          {paidPlan.name}
-        </Button>
-      </SubscriptionDetailsButton>
-    );
-  }
+  const { used, limit, isPaid } = usage;
+  const isOut = used >= limit;
+  const planName =
+    subscription?.subscriptionItems.find((item) => item.status === "active" && !item.plan.isDefault)?.plan.name ??
+    "Free";
 
-  if (upgradeOnlyWhenOut) {
-    if (!usage || usage.used < usage.limit) return null;
-    return (
-      <Button size="sm" onClick={() => openUpgrade(UPGRADE_REASONS.prompts)}>
-        Out of prompts · Upgrade
-      </Button>
-    );
-  }
+  const upgrade = () =>
+    openUpgrade({
+      title: isOut ? "You're out of agent prompts" : "Get more agent prompts",
+      description: `You've used ${used} of ${limit} prompts this month. Upgrade for more.`,
+    });
+
+  const usageButton = (
+    <button
+      type="button"
+      title={`${used.toLocaleString()} of ${limit.toLocaleString()} agent prompts used this month`}
+      onClick={isPaid ? undefined : upgrade}
+      className="flex h-full items-center gap-2.5 px-3 transition-colors hover:bg-white/5"
+    >
+      <span className="font-medium text-foreground">{planName}</span>
+      <span className="h-1 w-12 overflow-hidden rounded-full bg-white/10">
+        <span
+          className={`block h-full rounded-full ${isOut ? "bg-destructive" : "bg-primary"}`}
+          style={{ width: `${Math.min(100, (used / limit) * 100)}%` }}
+        />
+      </span>
+      <span className="text-muted-foreground tabular-nums">
+        {used.toLocaleString()}/{limit.toLocaleString()}
+      </span>
+    </button>
+  );
+
+  const canManage = isPaid && (!orgId || has?.({ permission: "org:sys_billing:manage" }));
 
   return (
-    <Button size="sm" onClick={() => openUpgrade()}>
-      Upgrade
-    </Button>
+    <div className="flex h-8 items-center overflow-hidden rounded-full border border-white/10 bg-white/3 text-xs">
+      {canManage ? <SubscriptionDetailsButton for={payerType}>{usageButton}</SubscriptionDetailsButton> : usageButton}
+      {!isPaid && (!upgradeOnlyWhenOut || isOut) && (
+        <button
+          type="button"
+          onClick={upgrade}
+          className="h-full border-l border-white/10 px-3 font-medium text-primary transition-colors hover:bg-primary/10"
+        >
+          Upgrade
+        </button>
+      )}
+    </div>
   );
 }
-
-export default PlanButton;

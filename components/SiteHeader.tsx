@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { OrganizationSwitcher, Show, SignInButton, SignUpButton, useAuth, UserButton } from '@clerk/nextjs'
 import { usePathname } from 'next/navigation'
-import PlanButton from './PlanButton'
+import { PlanButton } from './PlanButton'
 
 const SiteHeader = () => {
         const pathname = usePathname();
