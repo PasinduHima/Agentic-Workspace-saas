@@ -35,28 +35,37 @@ export async function createWorkspace(
   const scope = scopeWhere(orgId, user.id);
 
   const { unlimitedWorkspaces } = await getEntitlements(orgId ?? user.clerkId);
-  if (!unlimitedWorkspaces && (await prisma.workspace.count({ where: scope })) >= FREE_WORKSPACE_LIMIT) {
-    return { limit: "workspaces" };
-  }
 
-  // New workspaces land at the top of the Planning column.
-  const top = await prisma.workspace.findFirst({
-    where: { status: "PLANNING", ...scope },
-    orderBy: { position: "asc" },
-    select: { position: true },
-  });
+  const workspace = await prisma.$transaction(async (tx) => {
+    // Serializes creates per owner until commit, so parallel requests can't both pass the
+    // free-plan count below and go over the limit.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`create-workspace:${orgId ?? user.id}`}))`;
 
-  const workspace = await prisma.workspace.create({
-    data: {
-      name: trimmedName,
-      description: description?.trim() || null,
-      creatorId: user.id,
-      clerkOrgId: orgId ?? null,
-      position: top ? top.position - 1 : 0,
-      doc: { create: {} },
-      canvas: { create: {} },
-    },
+    if (!unlimitedWorkspaces && (await tx.workspace.count({ where: scope })) >= FREE_WORKSPACE_LIMIT) {
+      return null;
+    }
+
+    // New workspaces land at the top of the Planning column.
+    const top = await tx.workspace.findFirst({
+      where: { status: "PLANNING", ...scope },
+      orderBy: { position: "asc" },
+      select: { position: true },
+    });
+
+    return tx.workspace.create({
+      data: {
+        name: trimmedName,
+        description: description?.trim() || null,
+        creatorId: user.id,
+        clerkOrgId: orgId ?? null,
+        position: top ? top.position - 1 : 0,
+        doc: { create: {} },
+        canvas: { create: {} },
+      },
+      select: { id: true },
+    });
   });
+  if (!workspace) return { limit: "workspaces" };
 
   revalidateWorkspaceLists();
   return { workspace: { id: workspace.id } };
