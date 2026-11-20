@@ -11,6 +11,17 @@ import { fromBase64, toBase64 } from "@/lib/base64";
 
 const PEER_SYNC_WAIT_MS = 500;
 
+// The bytes of a broadcast's `{ update: base64 }` payload, or null if it isn't one.
+function decodePayload(payload: unknown): Uint8Array | null {
+  const update = (payload as { update?: unknown } | null)?.update;
+  if (typeof update !== "string" || !update) return null;
+  try {
+    return fromBase64(update);
+  } catch {
+    return null;
+  }
+}
+
 // Syncs a Yjs document between everyone viewing the same doc, over a Supabase Realtime channel.
 // Three broadcast events: "update" (doc changes), "awareness" (cursors/names) and "sync-request"
 // (a newcomer asking peers for their full state, to catch up on unsaved edits).
@@ -35,12 +46,29 @@ export class SupabaseYjsProvider {
     this.awareness = new Awareness(doc);
     this.channel = supabase.channel(`doc:${roomId}`, { config: { broadcast: { self: false } } });
 
+    // Messages come from a public channel, so anything malformed is dropped instead of throwing
+    // inside every open editor. (This doesn't stop well-formed but unwanted edits; that needs a
+    // private channel, see above.)
     this.channel
       .on("broadcast", { event: "update" }, ({ payload }) => {
-        Y.applyUpdate(this.doc, fromBase64(payload.update), this);
+        const update = decodePayload(payload);
+        if (!update) return;
+        try {
+          // decodeUpdate validates the whole update first, so a bad one never half-applies.
+          Y.decodeUpdate(update);
+          Y.applyUpdate(this.doc, update, this);
+        } catch {
+          // Not a Yjs update: ignore it.
+        }
       })
       .on("broadcast", { event: "awareness" }, ({ payload }) => {
-        applyAwarenessUpdate(this.awareness, fromBase64(payload.update), this);
+        const update = decodePayload(payload);
+        if (!update) return;
+        try {
+          applyAwarenessUpdate(this.awareness, update, this);
+        } catch {
+          // Not an awareness update: ignore it.
+        }
       })
       .on("broadcast", { event: "sync-request" }, () => {
         this.sendFullState();
