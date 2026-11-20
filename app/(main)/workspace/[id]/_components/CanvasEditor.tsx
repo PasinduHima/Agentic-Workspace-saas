@@ -33,9 +33,11 @@ const SAVE_DEBOUNCE_MS = 1000;
 
 const shapeUtils = [EntityTableShapeUtil];
 
-// Our own sync server (the tldraw-sync/ Cloudflare Worker). Without it, tldraw's public demo
-// server is used: fine for trying things out, but rooms there are public and get wiped.
+// Our own sync server (the tldraw-sync/ Cloudflare Worker). Without it, development falls back to
+// tldraw's public demo server: fine for trying things out, but rooms there are public and get
+// wiped, so a production build refuses to use it.
 const SYNC_URL = process.env.NEXT_PUBLIC_TLDRAW_SYNC_URL;
+const SYNC_MISSING_IN_PRODUCTION = !SYNC_URL && process.env.NODE_ENV === "production";
 
 // Unlike useSyncDemo, useSync doesn't add tldraw's built-in shapes itself. Built once here:
 // a new array on every render would make useSync rebuild the store in a loop.
@@ -69,13 +71,20 @@ const components: TLComponents = {
   ),
 };
 
-export function CanvasEditor({
-  workspaceId,
-  initialSnapshot,
-}: {
-  workspaceId: string;
-  initialSnapshot: TLEditorSnapshot | null;
-}) {
+type CanvasEditorProps = { workspaceId: string; initialSnapshot: TLEditorSnapshot | null };
+
+export function CanvasEditor(props: CanvasEditorProps) {
+  if (SYNC_MISSING_IN_PRODUCTION) {
+    return (
+      <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground">
+        The canvas isn&apos;t available: its sync server isn&apos;t configured.
+      </div>
+    );
+  }
+  return <LiveCanvasEditor {...props} />;
+}
+
+function LiveCanvasEditor({ workspaceId, initialSnapshot }: CanvasEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { setCanvasEditor } = useWorkspaceEditors();
   const { user } = useUser();
