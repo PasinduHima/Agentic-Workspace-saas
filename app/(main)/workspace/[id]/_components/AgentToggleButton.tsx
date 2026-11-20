@@ -8,13 +8,24 @@ import { Button } from "@/components/ui/button";
 import { AgentChatPanel } from "./AgentChatPanel";
 import { useWorkspaceEditors } from "@/components/WorkspaceEditorsContext";
 import { useWorkspaceAgentChat } from "@/hooks/use-workspace-agent-chat";
+import { takePendingPrompt } from "@/lib/pending-prompt";
 
 // Owns the open/closed state for the agent chat panel — needs a client boundary since
 // page.tsx is a server component, so this is the button plus the panel it toggles. The chat
 // itself is created here (not inside AgentChatPanel) and kept mounted even while closed, so
 // closing/reopening the panel doesn't wipe the conversation.
-export function AgentToggleButton({ workspaceId, initialPrompt }: { workspaceId: string; initialPrompt?: string }) {
-  const [isOpen, setIsOpen] = useState(!!initialPrompt);
+export function AgentToggleButton({
+  workspaceId,
+  initialPrompt,
+  hasPendingPrompt = false,
+}: {
+  workspaceId: string;
+  /** A prompt carried in the URL (fallback when session storage is unavailable). */
+  initialPrompt?: string;
+  /** The dashboard stored a prompt for this workspace in session storage. */
+  hasPendingPrompt?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(!!initialPrompt || hasPendingPrompt);
   const { canvasEditor, docEditor } = useWorkspaceEditors();
   const chat = useWorkspaceAgentChat(workspaceId, { canvasEditor, docEditor });
   const router = useRouter();
@@ -24,11 +35,12 @@ export function AgentToggleButton({ workspaceId, initialPrompt }: { workspaceId:
   // A prompt from the dashboard is sent once both editors are ready, so the agent sees both
   // surfaces. It's then dropped from the URL so a refresh doesn't send it again.
   useEffect(() => {
-    if (!initialPrompt || promptSent.current || !canvasEditor || !docEditor) return;
+    if (!(initialPrompt || hasPendingPrompt) || promptSent.current || !canvasEditor || !docEditor) return;
     promptSent.current = true;
-    chat.sendMessage({ text: initialPrompt });
+    const text = hasPendingPrompt ? takePendingPrompt(workspaceId) : initialPrompt;
+    if (text) chat.sendMessage({ text });
     router.replace(pathname, { scroll: false });
-  }, [initialPrompt, canvasEditor, docEditor, chat, router, pathname]);
+  }, [initialPrompt, hasPendingPrompt, workspaceId, canvasEditor, docEditor, chat, router, pathname]);
 
   return (
     <>

@@ -11,6 +11,7 @@ import { useUpgradeDialog } from "@/components/UpgradeDialog";
 import { UPGRADE_REASONS } from "@/lib/plan-limits";
 import { submitOnEnter } from "@/lib/utils";
 import { MAX_WORKSPACE_DESCRIPTION } from "@/lib/workspace-input";
+import { savePendingPrompt } from "@/lib/pending-prompt";
 
 const MAX_NAME_LENGTH = 48;
 
@@ -51,7 +52,14 @@ export function DashboardPrompt() {
     );
     if (!result) return;
     if ("limit" in result) return openUpgrade(UPGRADE_REASONS[result.limit]);
-    router.push(`/workspace/${result.workspace.id}?prompt=${encodeURIComponent(trimmed)}`);
+    const id = result.workspace.id;
+    // The URL only flags that a prompt is waiting; the text itself stays in this tab's storage.
+    // If storage is blocked, fall back to carrying it in the URL.
+    router.push(
+      savePendingPrompt(id, trimmed)
+        ? `/workspace/${id}?pendingPrompt=1`
+        : `/workspace/${id}?prompt=${encodeURIComponent(trimmed)}`,
+    );
   };
 
   return (
