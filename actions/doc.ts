@@ -2,7 +2,7 @@
 
 import * as Y from "yjs";
 import { canEditWorkspace } from "@/lib/workspace-access";
-import { prisma } from "@/lib/prisma";
+import { TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import type { Prisma } from "@/lib/generated/prisma/client";
 
 // Whether bytes decode as a Yjs update. Saving bytes that don't would leave a doc nobody can open.
@@ -48,5 +48,5 @@ export async function saveDocContent(
       where: { workspaceId },
       data: { yjsState: Uint8Array.from(merged), content },
     });
-  });
+  }, TRANSACTION_OPTIONS);
 }

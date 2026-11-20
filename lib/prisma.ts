@@ -10,3 +10,7 @@ export const prisma = globalForPrisma.prisma || new PrismaClient({
 });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+// For interactive transactions: Prisma's default maxWait (2s) to get a connection is too short for
+// a database that's waking up, which made the first save after idle fail with P2028.
+export const TRANSACTION_OPTIONS = { maxWait: 10_000 };

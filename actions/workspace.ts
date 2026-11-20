@@ -7,7 +7,7 @@ import { checkUser } from "@/actions/check-user";
 import { VIEWER_ROLE, canAccessWorkspace, canEditWorkspace } from "@/lib/workspace-access";
 import { parseWorkspaceInput } from "@/lib/workspace-input";
 import { scopeWhere } from "@/lib/workspace-scope";
-import { prisma } from "@/lib/prisma";
+import { TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import { WorkspaceStatus } from "@/lib/generated/prisma/enums";
 import { getEntitlements, getWorkspaceOwnerId, workspaceOwnerSelect } from "@/lib/billing";
 import { FREE_WORKSPACE_LIMIT, type LimitError } from "@/lib/plan-limits";
@@ -66,7 +66,7 @@ export async function createWorkspace(
       },
       select: { id: true },
     });
-  });
+  }, TRANSACTION_OPTIONS);
   if (!workspace) return { limit: "workspaces" };
 
   revalidateWorkspaceLists();

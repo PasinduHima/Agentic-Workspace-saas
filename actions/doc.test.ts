@@ -5,6 +5,7 @@ const state = vi.hoisted(() => ({
   canAccess: true,
   stored: null as Uint8Array | null,
   update: vi.fn(),
+  transactionOptions: undefined as unknown,
 }));
 
 vi.mock("@/lib/workspace-access", () => ({
@@ -12,12 +13,15 @@ vi.mock("@/lib/workspace-access", () => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({
+  TRANSACTION_OPTIONS: { maxWait: 10_000 },
   prisma: {
-    $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn({
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>, options?: unknown) => {
+      state.transactionOptions = options;
+      return fn({
         $queryRaw: async () => [{ yjsState: state.stored }],
         doc: { update: state.update },
-      }),
+      });
+    },
   },
 }));
 
@@ -71,6 +75,8 @@ describe("saveDocContent", () => {
     const text = result.getText("t").toString();
     expect(text).toContain("theirs");
     expect(text).toContain("mine");
+    // A waking database gets time to hand out a connection (B5).
+    expect(state.transactionOptions).toEqual({ maxWait: 10_000 });
   });
 
   it("replaces an undecodable stored state", async () => {
