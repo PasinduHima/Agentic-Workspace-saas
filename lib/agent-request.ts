@@ -37,3 +37,18 @@ export async function parseAgentRequest(body: unknown): Promise<AgentRequest | n
 export function isAutomaticFollowUp(messages: UIMessage[]) {
   return lastAssistantMessageIsCompleteWithToolCalls({ messages });
 }
+
+// Follow-ups aren't counted as prompts, so one prompt could otherwise keep the model looping on
+// tool calls (each one a paid Gemini request) indefinitely. Far above what a real diagram needs.
+export const MAX_AGENT_STEPS = 50;
+
+/**
+ * How many model steps the current prompt has run so far. The chat appends each automatic
+ * follow-up to the same assistant message, starting with a `step-start` part. Starting over
+ * means sending a new user message, which counts as a new prompt.
+ */
+export function agentStepCount(messages: UIMessage[]) {
+  const last = messages.at(-1);
+  if (last?.role !== "assistant") return 0;
+  return last.parts.filter((part) => part.type === "step-start").length;
+}

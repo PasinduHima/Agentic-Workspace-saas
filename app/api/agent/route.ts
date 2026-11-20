@@ -1,7 +1,12 @@
 import { google } from "@ai-sdk/google";
 import { streamText, convertToModelMessages } from "ai";
 import { agentToolDefs } from "@/lib/agent-tools";
-import { isAutomaticFollowUp, parseAgentRequest } from "@/lib/agent-request";
+import {
+  MAX_AGENT_STEPS,
+  agentStepCount,
+  isAutomaticFollowUp,
+  parseAgentRequest,
+} from "@/lib/agent-request";
 import { PROMPT_LIMIT_ERROR } from "@/lib/plan-limits";
 import { auth } from "@clerk/nextjs/server";
 import { checkUser } from "@/actions/check-user";
@@ -61,6 +66,11 @@ export async function POST(req: Request) {
   const { used, limit } = await getPromptUsage(ownerId);
   if (used >= limit) return Response.json({ error: PROMPT_LIMIT_ERROR, used, limit }, { status: 402 });
   const countsAsPrompt = !isAutomaticFollowUp(messages);
+  if (!countsAsPrompt && agentStepCount(messages) >= MAX_AGENT_STEPS) {
+    return new Response("This request used too many steps. Send a new message to continue.", {
+      status: 429,
+    });
+  }
 
   const result = streamText({
     model: google("gemini-3.5-flash-lite"),

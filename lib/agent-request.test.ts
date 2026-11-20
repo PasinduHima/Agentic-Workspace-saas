@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { UIMessage } from "ai";
-import { MAX_CONTEXT_CHARS, MAX_MESSAGES, isAutomaticFollowUp, parseAgentRequest } from "./agent-request";
+import {
+  MAX_CONTEXT_CHARS,
+  MAX_MESSAGES,
+  agentStepCount,
+  isAutomaticFollowUp,
+  parseAgentRequest,
+} from "./agent-request";
 
 const userMessage: UIMessage = { id: "u1", role: "user", parts: [{ type: "text", text: "Draw a flow" }] };
 
@@ -59,5 +65,28 @@ describe("isAutomaticFollowUp", () => {
     const textOnly: UIMessage = { id: "a2", role: "assistant", parts: [{ type: "text", text: "hi" }] };
     expect(isAutomaticFollowUp([userMessage, textOnly])).toBe(false);
     expect(isAutomaticFollowUp([userMessage, toolCall("input-available")])).toBe(false);
+  });
+});
+
+describe("agentStepCount", () => {
+  const assistantWithSteps = (steps: number): UIMessage => ({
+    id: "a1",
+    role: "assistant",
+    parts: Array.from({ length: steps }, () => [
+      { type: "step-start" as const },
+      { type: "text" as const, text: "…" },
+    ]).flat(),
+  });
+
+  it("is 0 when the last message is the user's", () => {
+    expect(agentStepCount([userMessage])).toBe(0);
+  });
+
+  it("counts the steps in the current assistant message", () => {
+    expect(agentStepCount([userMessage, assistantWithSteps(3)])).toBe(3);
+  });
+
+  it("only looks at the latest assistant message", () => {
+    expect(agentStepCount([userMessage, assistantWithSteps(40), userMessage, assistantWithSteps(2)])).toBe(2);
   });
 });
