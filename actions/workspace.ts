@@ -4,7 +4,8 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { checkUser } from "@/actions/check-user";
-import { canAccessWorkspace, canEditWorkspace } from "@/lib/workspace-access";
+import { VIEWER_ROLE, canAccessWorkspace, canEditWorkspace } from "@/lib/workspace-access";
+import { parseWorkspaceInput } from "@/lib/workspace-input";
 import { scopeWhere } from "@/lib/workspace-scope";
 import { prisma } from "@/lib/prisma";
 import { WorkspaceStatus } from "@/lib/generated/prisma/enums";
@@ -27,11 +28,12 @@ export async function createWorkspace(
   const user = await checkUser();
   if (!user) throw new Error("Not signed in");
 
-  const trimmedName = name.trim();
-  if (!trimmedName) throw new Error("Workspace name is required");
+  const input = parseWorkspaceInput({ name, description });
 
   // Belongs to whichever org is active; no active org means a personal workspace.
-  const { orgId } = await auth();
+  const { orgId, orgRole } = await auth();
+  // Viewers can open the org's workspaces but not change them, so they can't add any either.
+  if (orgId && orgRole === VIEWER_ROLE) throw new Error("Viewers can't create workspaces");
   const scope = scopeWhere(orgId, user.id);
 
   const { unlimitedWorkspaces } = await getEntitlements(orgId ?? user.clerkId);
@@ -54,8 +56,8 @@ export async function createWorkspace(
 
     return tx.workspace.create({
       data: {
-        name: trimmedName,
-        description: description?.trim() || null,
+        name: input.name,
+        description: input.description ?? null,
         creatorId: user.id,
         clerkOrgId: orgId ?? null,
         position: top ? top.position - 1 : 0,
@@ -75,14 +77,13 @@ export async function createWorkspace(
 export async function updateWorkspace(workspaceId: string, name: string, description?: string) {
   if (!(await canEditWorkspace(workspaceId))) throw new Error("Workspace not found");
 
-  const trimmedName = name.trim();
-  if (!trimmedName) throw new Error("Workspace name is required");
+  const input = parseWorkspaceInput({ name, description });
 
   const workspace = await prisma.workspace.update({
     where: { id: workspaceId },
     data: {
-      name: trimmedName,
-      ...(description !== undefined && { description: description.trim() || null }),
+      name: input.name,
+      ...(input.description !== undefined && { description: input.description }),
     },
   });
 

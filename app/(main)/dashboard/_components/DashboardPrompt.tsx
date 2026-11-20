@@ -10,6 +10,7 @@ import { MicButton } from "@/components/MicButton";
 import { useUpgradeDialog } from "@/components/UpgradeDialog";
 import { UPGRADE_REASONS } from "@/lib/plan-limits";
 import { submitOnEnter } from "@/lib/utils";
+import { MAX_WORKSPACE_DESCRIPTION } from "@/lib/workspace-input";
 
 const MAX_NAME_LENGTH = 48;
 
@@ -42,7 +43,12 @@ export function DashboardPrompt() {
   const handleSubmit = async () => {
     const trimmed = prompt.trim();
     if (!trimmed || busy) return;
-    const result = await createWorkspaceFn(nameFromPrompt(trimmed), trimmed);
+    // The description is just a reminder of the prompt, so it's cut to fit; the agent still
+    // receives the whole prompt.
+    const result = await createWorkspaceFn(
+      nameFromPrompt(trimmed),
+      trimmed.slice(0, MAX_WORKSPACE_DESCRIPTION),
+    );
     if (!result) return;
     if ("limit" in result) return openUpgrade(UPGRADE_REASONS[result.limit]);
     router.push(`/workspace/${result.workspace.id}?prompt=${encodeURIComponent(trimmed)}`);
