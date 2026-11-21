@@ -7,4 +7,16 @@ const supabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_URL;
 
-export const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, supabaseKey!);
+// Realtime authorizes private channels with the signed-in user's Clerk session token (Clerk is a
+// Supabase third-party auth provider). The getter is set by the component that opens a channel,
+// since Clerk's token API lives in React (useAuth).
+let getClerkToken: () => Promise<string | null> = async () => null;
+
+export function setSupabaseTokenGetter(getter: () => Promise<string | null>) {
+  getClerkToken = getter;
+}
+
+export const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, supabaseKey!, {
+  // Called by Realtime whenever it joins a channel or refreshes auth, so tokens stay fresh.
+  accessToken: () => getClerkToken(),
+});

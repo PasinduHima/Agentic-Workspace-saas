@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import * as Y from "yjs";
 import type { Block } from "@blocknote/core";
 import { withCollaboration } from "@blocknote/core/yjs";
@@ -15,6 +15,7 @@ import { useWorkspaceEditors } from "@/components/WorkspaceEditorsContext";
 import { fromBase64, toBase64 } from "@/lib/base64";
 import { outpostDarkTheme } from "@/lib/blocknote-theme";
 import { SupabaseYjsProvider } from "@/lib/supabase-yjs-provider";
+import { setSupabaseTokenGetter } from "@/lib/supabase";
 import { colorForUser } from "@/lib/utils";
 
 const SAVE_DEBOUNCE_MS = 1000;
@@ -60,15 +61,25 @@ function loadDoc(initialState: string | null, initialContent: unknown) {
  */
 export function DocEditor({ workspaceId, initialContent, initialState }: DocEditorProps) {
   const { user, isLoaded } = useUser();
+  const { getToken } = useAuth();
   const [session, setSession] = useState<Session | null>(null);
 
   // The saved state matters only when the doc first opens. Later server re-renders (e.g. after a
   // rename) bring newer props, and reloading from them would throw away unsaved edits.
   const [initial] = useState({ initialState, initialContent });
 
-  // Created in an effect so React's dev double-mount gets its own provider each time, rather
-  // than reusing one that the first cleanup already disconnected.
+  // Read through a ref so a new getToken identity doesn't reconnect the doc.
+  const getTokenRef = useRef(getToken);
   useEffect(() => {
+    getTokenRef.current = getToken;
+  });
+
+  // Created in an effect so React's dev double-mount gets its own provider each time, rather
+  // than reusing one that the first cleanup already disconnected. Waits for Clerk, since the
+  // private channel is authorized with the user's session token.
+  useEffect(() => {
+    if (!isLoaded) return;
+    setSupabaseTokenGetter(() => getTokenRef.current());
     const doc = loadDoc(initial.initialState, initial.initialContent);
     const provider: SupabaseYjsProvider = new SupabaseYjsProvider(doc, workspaceId, () =>
       setSession({ doc, provider }),
@@ -78,7 +89,7 @@ export function DocEditor({ workspaceId, initialContent, initialState }: DocEdit
       doc.destroy();
       setSession(null);
     };
-  }, [workspaceId, initial]);
+  }, [workspaceId, initial, isLoaded]);
 
   const seedBlocks = Array.isArray(initial.initialContent) ? initial.initialContent : null;
 

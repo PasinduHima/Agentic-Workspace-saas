@@ -26,9 +26,9 @@ function decodePayload(payload: unknown): Uint8Array | null {
 // Three broadcast events: "update" (doc changes), "awareness" (cursors/names) and "sync-request"
 // (a newcomer asking peers for their full state, to catch up on unsaved edits).
 //
-// Tutorial scope: this is a public channel, so anyone with the anon key and the doc id could join.
-// For production, use a private channel with Supabase Realtime Authorization (RLS on
-// realtime.messages) and sign clients in with their Clerk session token.
+// The channel is private: Supabase Realtime Authorization checks the user's Clerk session token
+// against the policies in supabase/realtime-doc-channel-policies.sql (workspace access; viewers
+// can receive but not send). If joining is refused, the editor still opens with the saved state.
 export class SupabaseYjsProvider {
   readonly awareness: Awareness;
   private channel: RealtimeChannel;
@@ -44,7 +44,9 @@ export class SupabaseYjsProvider {
     private onReady: () => void
   ) {
     this.awareness = new Awareness(doc);
-    this.channel = supabase.channel(`doc:${roomId}`, { config: { broadcast: { self: false } } });
+    this.channel = supabase.channel(`doc:${roomId}`, {
+      config: { private: true, broadcast: { self: false } },
+    });
 
     // Messages come from a public channel, so anything malformed is dropped instead of throwing
     // inside every open editor. (This doesn't stop well-formed but unwanted edits; that needs a

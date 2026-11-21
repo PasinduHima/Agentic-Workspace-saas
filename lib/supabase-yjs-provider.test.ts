@@ -6,6 +6,8 @@ type Handler = (message: { payload: unknown }) => void;
 
 const channel = vi.hoisted(() => ({
   handlers: new Map<string, Handler>(),
+  name: "",
+  options: undefined as unknown,
 }));
 
 vi.mock("@/lib/supabase", () => {
@@ -19,7 +21,16 @@ vi.mock("@/lib/supabase", () => {
     },
     send: vi.fn(),
   };
-  return { supabase: { channel: () => fake, removeChannel: vi.fn() } };
+  return {
+    supabase: {
+      channel: (name: string, options: unknown) => {
+        channel.name = name;
+        channel.options = options;
+        return fake;
+      },
+      removeChannel: vi.fn(),
+    },
+  };
 });
 
 const { SupabaseYjsProvider } = await import("./supabase-yjs-provider");
@@ -34,6 +45,11 @@ describe("SupabaseYjsProvider incoming broadcasts", () => {
     channel.handlers.clear();
     doc = new Y.Doc();
     new SupabaseYjsProvider(doc, "room", () => {});
+  });
+
+  it("joins the workspace's private doc channel", () => {
+    expect(channel.name).toBe("doc:room");
+    expect(channel.options).toMatchObject({ config: { private: true } });
   });
 
   it("applies a valid update from a peer", () => {
