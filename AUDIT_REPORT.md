@@ -130,3 +130,56 @@ After every commit: `tsc`, `eslint`, `npm test`, `next build`. Anything that pas
   - Supabase private channels (S3)
   - rename `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_URL` to `_KEY` in your hosting env
   - set `NEXT_PUBLIC_TLDRAW_SYNC_URL` on the host
+
+---
+
+## Results (Phase 3, 2026-11-21)
+
+### Findings status
+| ID | Status | Commit / note |
+|---|---|---|
+| S1 | **Fixed** | `bf5d89f`: next and eslint-config-next 16.3.4 → 16.4.6 |
+| S2 | **Fixed** | `3959d5b`: vitest 3.2 → 4.1.12 (not 5.x, which would also require `@types/node` ≥22) |
+| S3 | **Partly fixed, needs your decision** | `56678c9`: malformed broadcasts are dropped, with a test. Well-formed but malicious updates and eavesdropping on the public channel remain until Supabase private channels and RLS are set up (see manual tasks). |
+| S4 | **Fixed** | `e0363e0`: production refuses tldraw's public demo server |
+| S5 | **Fixed** | `51942e7`: X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy (checked with `curl -I`). The CSP is still to do. |
+| S6 | **Fixed** | `ede16e9`: max 50 automatic steps per prompt, then 429 |
+| S7, S8 | **Fixed** | `da749aa`: viewers can't create workspaces; zod validation (name ≤80, description ≤2000) |
+| S9 | **Skipped** | No safe fix: npm's fix is a downgrade to Prisma 6.12, and the latest `@prisma/config` still pins `effect@3.20.0`. Affects the Prisma CLI only. |
+| S10 | **Fixed** (mostly) | `6094575`: `@clerk/ui` 1.44.2 (drops the Solana stack) plus in-range `npm audit fix`. The `shadcn` → `ts-morph` → `minimatch` chain stays: the only fix is a downgrade, and shadcn is imported by `globals.css`. |
+| B1 | **Fixed** | with S3 (`56678c9`) |
+| B2 | **Skipped** (your choice) | `npm run seed` still points at a missing `prisma/seed.ts` |
+| B3 | **Fixed** | `e7bbab7`: prompt is handed over through sessionStorage, falling back to the URL if storage is blocked |
+| B4 | **Fixed** | `2ab6e8d`: `app/error.tsx`, `app/not-found.tsx`, `app/(main)/loading.tsx` |
+| B5 | **Fixed** | `1e9804b`: transactions get `maxWait: 10s` |
+| P1 | Skipped | report only (dashboard loads every workspace to show 6) |
+| D1–D7 | **Fixed** | `ccf8638`, `de1c8df`, `69d2b7e`, `7062e98`, `d509caa` |
+| D8 | **Fixed** | `afa8438`: manifest, icons, OG/Twitter image wired into metadata |
+| D9 | **Fixed** | `1e4ac38`: removed `public/LICENSE` |
+| Q1, Q2 | **Fixed** | `acd325a`, `8a44155` |
+| Q3 | Skipped | report only |
+
+### Before and after
+| Metric | Baseline (`main` @ 341a6f6) | Now |
+|---|---|---|
+| `npm audit` | 30 (3 critical, 3 high, 24 moderate) | **7 (0 critical, 3 high, 4 moderate)**; all 7 are the S9/S10 downgrade-only chains |
+| Type errors | 0 | 0 |
+| Lint | 0 errors, 2 warnings | **0 errors, 0 warnings** |
+| Tests | 35 passing (5 files) | **55 passing (8 files)** |
+| Build | pass | pass |
+| Files removed | | 10 files, 1,358 lines |
+| Source diff (excluding lockfile and this report) | | +514 / −1,439 lines |
+| `package-lock.json` | | +1,190 / −9,354 lines |
+| Dependencies removed | | `react-spinners`, `next-themes`; none added |
+
+### Smoke test (production build, signed out)
+`/` 200 · `/shared/<unknown token>` 404 (app 404 page; DB lookup ran) · `/shared/x` 404 · `/workspace/abc`, `/dashboard`, `/workspaces` 307 to Clerk sign-in · `/nope` 404 · `/manifest.json` 200 · `POST /api/agent` 401 · all 4 security headers present.
+**Not run:** signed-in flows (dashboard prompt, doc/canvas save, rename, board move, share link, PDF export). They need you to sign in; I don't enter credentials.
+
+### Manual tasks for you
+1. **Supabase private channels (S3):** enable Realtime Authorization (RLS on `realtime.messages`), connect Clerk as a third-party auth provider, and switch the provider to `private: true` channels. Until then, anyone with the publishable key and a workspace id can read and alter live doc edits.
+2. **Set `NEXT_PUBLIC_TLDRAW_SYNC_URL`** on your host. Without it, production builds now disable the canvas (S4). Your local `.env` doesn't have it either, so `next start` locally shows the "canvas isn't available" panel; `npm run dev` still works.
+3. **Rename `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_URL` → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`** in `.env` and on the host (the code reads both for now).
+4. **Set `NEXT_PUBLIC_APP_URL`** (new, optional) to your public URL, so link-preview images use absolute URLs instead of `localhost:3000`.
+5. No secrets were found in the repo or its history, so nothing needs rotating.
+6. Later: add a Content-Security-Policy, tuned for Clerk, tldraw, Supabase and the sync server, and tested.
