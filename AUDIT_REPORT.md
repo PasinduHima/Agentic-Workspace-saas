@@ -140,7 +140,8 @@ After every commit: `tsc`, `eslint`, `npm test`, `next build`. Anything that pas
 |---|---|---|
 | S1 | **Fixed** | `bf5d89f`: next and eslint-config-next 16.3.4 → 16.4.6 |
 | S2 | **Fixed** | `3959d5b`: vitest 3.2 → 4.1.12 (not 5.x, which would also require `@types/node` ≥22) |
-| S3 | **Partly fixed, needs your decision** | `56678c9`: malformed broadcasts are dropped, with a test. Well-formed but malicious updates and eavesdropping on the public channel remain until Supabase private channels and RLS are set up (see manual tasks). |
+| S3 | **Fixed in code and database; dashboard steps pending** | `56678c9` (payload guard), `824857b` (private channels + Clerk token). Policies applied to the database on 2026-11-21. Live sync needs the Clerk/Supabase dashboard steps below before this ships. |
+| S11 | **Fixed (applied)** | `7ee0bf2`: **Critical, found after the main audit.** RLS was off on every app table and the `anon`/`authenticated` roles had full privileges, so the publishable key could read and modify all data via `/rest/v1` (confirmed). RLS is now on and the API roles are revoked; anonymous REST requests get 401, and the app (owner role) is unaffected. |
 | S4 | **Fixed** | `e0363e0`: production refuses tldraw's public demo server |
 | S5 | **Fixed** | `51942e7`: X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy (checked with `curl -I`). The CSP is still to do. |
 | S6 | **Fixed** | `ede16e9`: max 50 automatic steps per prompt, then 429 |
@@ -177,7 +178,7 @@ After every commit: `tsc`, `eslint`, `npm test`, `next build`. Anything that pas
 **Not run:** signed-in flows (dashboard prompt, doc/canvas save, rename, board move, share link, PDF export). They need you to sign in; I don't enter credentials.
 
 ### Manual tasks for you
-1. **Supabase private channels (S3):** enable Realtime Authorization (RLS on `realtime.messages`), connect Clerk as a third-party auth provider, and switch the provider to `private: true` channels. Until then, anyone with the publishable key and a workspace id can read and alter live doc edits.
+1. **Finish the private doc channels (S3), in this order:** (a) Clerk Dashboard → activate the Supabase integration (adds `role: authenticated` to session tokens) and copy the Clerk domain; (b) Supabase Dashboard → Authentication → Sign In / Providers → add Clerk with that domain; (c) deploy this branch; (d) Supabase → Realtime → Settings → turn off **Allow public access**. Until (a) and (b) are done, the branch's private channels are refused: docs still open and save, but without live collaboration. Known limit: Realtime only sees the *active* org, so opening an org workspace while a different org is selected gives no live sync (the page itself still loads).
 2. **Set `NEXT_PUBLIC_TLDRAW_SYNC_URL`** on your host. Without it, production builds now disable the canvas (S4). Your local `.env` doesn't have it either, so `next start` locally shows the "canvas isn't available" panel; `npm run dev` still works.
 3. **Rename `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_URL` → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`** in `.env` and on the host (the code reads both for now).
 4. **Set `NEXT_PUBLIC_APP_URL`** (new, optional) to your public URL, so link-preview images use absolute URLs instead of `localhost:3000`.
