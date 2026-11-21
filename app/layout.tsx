@@ -17,10 +17,19 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const title = "Outpost: Agentic Workspace";
+const description = "An AI agent that draws and writes alongside you and your team, Live";
+const ogImage = { url: "/social/og-image.png", width: 1200, height: 630, alt: "Outpost" };
+
 export const metadata: Metadata = {
-  title: "Outpost: Agentic Workspace",
-  description:
-    "An AI agent that draws and writes alongside you and your team, Live",
+  // Makes the share-image URL absolute; without it Next falls back to localhost (or the Vercel URL).
+  metadataBase: process.env.NEXT_PUBLIC_APP_URL ? new URL(process.env.NEXT_PUBLIC_APP_URL) : undefined,
+  title,
+  description,
+  manifest: "/manifest.json",
+  icons: { icon: "/icon.png", apple: "/apple-icon.png" },
+  openGraph: { title, description, images: [ogImage], type: "website" },
+  twitter: { card: "summary_large_image", title, description, images: [ogImage.url] },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
