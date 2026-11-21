@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Outpost
 
-## Getting Started
+An agentic workspace: each workspace pairs a collaborative doc (BlockNote + Yjs) with an infinite
+canvas (tldraw, with an ERD table shape), and an AI agent (Gemini via the AI SDK) that edits both.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 (App Router, `proxy.ts` middleware), React 19, Tailwind v4, shadcn/ui
+- Clerk for auth, organizations and billing
+- Postgres with Prisma 7 (`@prisma/adapter-pg`, client generated to `lib/generated/prisma`)
+- Supabase Realtime for live doc sync; a tldraw sync server for the canvas
+- Vitest for unit tests
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env    # fill in the values
+npx prisma migrate deploy
+npx prisma generate
+npm run dev             # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+See `.env.example` for every variable. In production, `NEXT_PUBLIC_TLDRAW_SYNC_URL` is required
+(the canvas is disabled without it), and `NEXT_PUBLIC_APP_URL` should be your public URL.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | What it does |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` / `npm start` | Production build / serve it |
+| `npm run lint` | ESLint |
+| `npm test` | Vitest unit tests |
 
-## Learn More
+## Layout
 
-To learn more about Next.js, take a look at the following resources:
+- `app/`: routes: landing, `(main)/dashboard`, `(main)/workspaces` (board), `(main)/workspace/[id]`,
+  `shared/[token]` (public read-only view), `api/agent`
+- `actions/`: server actions (workspaces, doc and canvas saves, usage)
+- `components/`: UI, editors, the ERD shape (`components/EntityTable`)
+- `lib/`: access checks, billing and plan limits, agent tools, Realtime provider, validation
+- `prisma/`: schema and migrations
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`AUDIT_REPORT.md` has the latest security and code-health audit.
